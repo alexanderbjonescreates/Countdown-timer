@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Countdown</title>
+  <style>
+    :root {
+      --bg: #0b0b0b;
+      --fg: #f5f7fa;
+      --warn: #ffb300;
+      --crit: #ff3b30;
+      --accent: #9aa0a6;
+      --font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    html, body {
+      height: 100%; margin: 0; background: var(--bg); color: var(--fg);
+      font-family: var(--font);
+    }
+    .wrap {
+      display: grid; grid-template-rows: auto 1fr auto; height: 100vh; gap: 1.5rem;
+      padding: clamp(12px, 2.2vmin, 32px);
+      box-sizing: border-box; align-items: center; justify-items: center;
+    }
+    h1 {
+      margin: 0; font-weight: 600; letter-spacing: .02em;
+      font-size: clamp(16px, 3.2vmin, 28px); color: var(--accent);
+      text-align: center;
+    }
+    .time {
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      font-size: min(22vw, 28vh);  /* responsive but huge */
+      letter-spacing: .03em;
+      transition: color .15s ease;
+      user-select: none;
+      text-align: center;
+    }
+    .controls { display: flex; gap: .75rem; flex-wrap: wrap; justify-content: center; }
+    button {
+      background: #1f2937; color: var(--fg); border: 1px solid #374151;
+      padding: .6rem .9rem; border-radius: .6rem; font-size: 14px; cursor: pointer;
+    }
+    button:hover { background: #263244; }
+    .pill { font-size: 12px; color: var(--accent); }
+    .flash { animation: flash 150ms steps(1, end) 6; }
+    @keyframes flash { 50% { background: #fff; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="title"></h1>
+    <div id="time" class="time">10:00</div>
+    <div class="controls">
+      <button id="startPause">Start</button>
+      <button id="reset">Reset</button>
+      <button id="loopBtn" class="pill" title="Toggle loop (L)">Loop: Off</button>
+    </div>
+    <audio id="beep" preload="auto">
+      <!-- tiny inline beep as data URI for portability -->
+      <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAABkYXRhBAAAAB8AAAAAAP///wAAAP///wAAAAAAAP///w==" type="audio/wav">
+    </audio>
+  </div>
+
+  <script>
+    // ----------- helpers -----------
+    const qs = new URLSearchParams(location.search);
+    const get = (k, d=null) => qs.has(k) ? qs.get(k) : d;
+
+    // Duration parser: accepts "10", "600", "10:00"
+    function parseDuration(input, fallbackSec=600) {
+      if (!input) return fallbackSec;
+      if (/^\d+$/.test(input)) {
+        const n = parseInt(input, 10);
+        return (n > 60 ? n : n * 60);
+      }
+      const m = input.match(/^(\d{1,3}):(\d{1,2})$/);
+      if (m) {
+        const mins = parseInt(m[1],10), secs = parseInt(m[2],10);
+        return mins*60 + secs;
+      }
+      return fallbackSec;
+    }
+
+    // ----------- settings -----------
+    const DURATION = parseDuration(get('t'), 600); // default 10:00
+    const TITLE = get('title','');
+    const AUTOSTART = get('autostart','0') === '1';
+    const BEEP = get('beep','0') === '1';
+    const FLASH = get('flash','0') === '1';
+    let LOOP = get('loop','0') === '1';
+
+    // Colors
+    const BG = get('bg'); const FG = get('fg');
+    if (BG) document.documentElement.style.setProperty('--bg', BG);
+    if (FG) document.documentElement.style.setProperty('--fg', FG);
+
+    // ----------- state -----------
+    const timeEl = document.getElementById('time');
+    const titleEl = document.getElementById('title');
+    const startPauseBtn = document.getElementById('startPause');
+    const resetBtn = document.getElementById('reset');
+    const loopBtn = document.getElementById('loopBtn');
+    const beepEl = document.getElementById('beep');
+
+    titleEl.textContent = TITLE;
+    loopBtn.textContent = `Loop: ${LOOP ? 'On' : 'Off'}`;
+
+    let targetSeconds = DURATION;
+    let running = false;
+    let startPerf = 0;
+    let carried = 0; // accumulated elapsed across pauses
+    let rafId = null;
+    let interacted = false; // to satisfy autoplay policies
+
+    function format(s) {
+      s = Math.max(0, Math.ceil(s));
+      const m = Math.floor(s/60);
+      const sec = s % 60;
+      return `${m}:${sec.toString().padStart(2,'0')}`;
+    }
+
+    function updateColor(secondsLeft) {
+      if (secondsLeft <= 20) {
+        timeEl.style.color = get('crit','#ff3b30');
+      } else if (secondsLeft <= 60) {
+        timeEl.style.color = get('warn','#ffb300');
+      } else {
+        timeEl.style.color = get('fg','#f5f7fa');
+      }
+    }
+
+    function tick() {
+      const now = performance.now();
+      const elapsed = (now - startPerf)/1000 + carried;
+      const left = targetSeconds - elapsed;
+      updateColor(left);
+      timeEl.textContent = format(left);
+      if (left <= 0) {
+        stop();
+        if (FLASH) document.body.classList.add('flash');
+        if (BEEP && interacted) beepEl.play().catch(()=>{});
+        if (LOOP) {
+          setTimeout(() => { document.body.classList.remove('flash'); reset(); start(); }, 250);
+        }
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function start() {
+      if (running) return;
+      running = true;
+      interacted = true; // any button press counts as user gesture
+      document.body.classList.remove('flash');
+      startPerf = performance.now();
+      rafId = requestAnimationFrame(tick);
+      startPauseBtn.textContent = 'Pause';
+    }
+    function stop() {
+      if (!running) return;
+      running = false;
+      cancelAnimationFrame(rafId);
+      carried += (performance.now() - startPerf)/1000;
+      startPauseBtn.textContent = 'Start';
+    }
+    function reset() {
+      stop();
+      carried = 0;
+      document.body.classList.remove('flash');
+      timeEl.textContent = format(targetSeconds);
+      updateColor(targetSeconds);
+    }
+
+    // init display
+    timeEl.textContent = format(targetSeconds);
+    updateColor(targetSeconds);
+
+    // controls
+    startPauseBtn.addEventListener('click', () => (running ? stop() : start()));
+    resetBtn.addEventListener('click', reset);
+    loopBtn.addEventListener('click', () => {
+      LOOP = !LOOP; loopBtn.textContent = `Loop: ${LOOP ? 'On' : 'Off'}`;
+    });
+
+    // keyboard: Space=start/pause, R=reset, L=loop
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { e.preventDefault(); running ? stop() : start(); }
+      else if (e.key.toLowerCase() === 'r') { reset(); }
+      else if (e.key.toLowerCase() === 'l') { LOOP = !LOOP; loopBtn.textContent = `Loop: ${LOOP ? 'On' : 'Off'}`; }
+    });
+
+    // autostart if requested (first click on the iframe counts as interaction for audio)
+    if (AUTOSTART) {
+      // wait one tick so Miro finishes rendering iframe
+      setTimeout(() => start(), 50);
+    }
+  </script>
+</body>
+</html>
