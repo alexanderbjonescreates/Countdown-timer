@@ -6,36 +6,41 @@
   <title>Countdown</title>
   <style>
     :root {
-      --bg: #c4d600;
-      --fg: #000000;
-      --warn: #ffb300;
-      --crit: #ff3b30;
-      --accent: #ffffff;
-      --font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    }
+  --bg: #c4d600;   /* your background */
+  --fg: #000000;   /* your digits */
+  --warn: #b38600; /* optional: amber within your palette */
+  --crit: #9a0000; /* optional: red within your palette */
+  --accent: #000000;
+  --font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
     html, body {
       height: 100%; margin: 0; background: var(--bg); color: var(--fg);
       font-family: var(--font);
     }
-    .wrap {
-      display: grid; grid-template-rows: auto 1fr auto; height: 100vh; gap: 1.5rem;
-      padding: clamp(12px, 2.2vmin, 32px);
-      box-sizing: border-box; align-items: center; justify-items: center;
-    }
+   .wrap {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh; gap: 1rem;
+  padding: clamp(8px, 1.2vmin, 18px);  /* was more generous; this frees space */
+  box-sizing: border-box; align-items: center; justify-items: center;
+  }
+
     h1 {
       margin: 0; font-weight: 600; letter-spacing: .02em;
       font-size: clamp(30px, 3.2vmin, 28px); color: var(--accent);
       text-align: center;
     }
-    .time {
-      font-variant-numeric: tabular-nums;
-      line-height: 1;
-      font-size: min(22vw, 28vh);  /* responsive but huge */
-      letter-spacing: .03em;
-      transition: color .15s ease;
-      user-select: none;
-      text-align: center;
-    }
+  .time {
+  font-variant-numeric: tabular-nums;
+  line-height: 0.92;                 /* tighter lines to reduce vertical padding */
+  font-size: min(30vw, 40vh);        /* was min(22vw, 28vh); bigger in both axes */
+  letter-spacing: 0.02em;            /* slightly tighter tracking */
+  transition: color .15s ease;
+  user-select: none;
+  text-align: center;
+  }
+
     .controls { display: flex; gap: .75rem; flex-wrap: wrap; justify-content: center; }
     button {
       background: #1f2937; color: var(--fg); border: 1px solid #374151;
